@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using TMPro;
 using Unity.Sentis;
 using UnityEngine;
@@ -55,28 +55,40 @@ namespace kbradu
 
         public void Detect()
         {
+            // with multithread 0.5 around
+
+
+    
+            Utils.Benckmark.Start();
             Texture2D view = testImage.texture;
-            TensorFloat input = Utils.TextureToTensor(view, Origin.TopLeft);
+            TensorFloat input = Utils.TextureToTensorHWC(view, OriginLike.OpenCV, multithread:true);
 
-            Utils.Vision.CenterCrop(ref input);
-            Utils.Vision.Resize(ref input, 640, 640);
-            Utils.Vision.HWC2CHW(ref input);
+            Utils.Vision.CenterCrop(ref input, true);
+            Utils.Vision.Resize(ref input, 640, 640, true);
+            Utils.Vision.HWC2CHW(ref input, true);
+
            
-            TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
 
-            var result = PostProcess_yolov10n(input, output);
-            Utils.Vision.CHW2HWC(ref result);
-            cameraDisplay.SetTexture(result);        
+            TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
+       
+
+            var result = PostProcess_yolov10n(input, output); // to be optimized
+           
+            // this takes 0.06
+            cameraDisplay.SetTexture(Utils.TensorCHWToTexture(result, true));
 
             input.Dispose();
             output.Dispose();
             result.Dispose();
+            Utils.Benckmark.Stop();
         }
         public TensorFloat PostProcess_yolov10n(TensorFloat input, TensorFloat result)
         {
             // input 3, 640, 640
             // 1,300, 6
+
             LinkedList<DetectedObject> list = new();
+
             for (int i = 0; i < 300; i++)
             {
                 float x = result[0, i, 0];
@@ -86,7 +98,7 @@ namespace kbradu
                 float confidence = result[0, i, 4];
                 string classname = classLabels[(int)result[0, i, 5]];
 
-                if(confidence > confidence_tresh)
+                if(confidence > confidence_tresh)         
                     list.AddLast(new DetectedObject(new Rect(x, y, w, h), confidence, classname));
             }
             
@@ -98,37 +110,21 @@ namespace kbradu
                 stringBuilder.Append(obj.name);
                 stringBuilder.Append(" - ");
                 stringBuilder.Append($"{(int)(obj.confidence * 100f)}%");
-                // stringBuilder.Append($" - {obj.bounding_box.ToString()}");
                 stringBuilder.Append("</color>\n");
                
                 
             }
             text.text = stringBuilder.ToString();
+            CURRENT_DETECTIONS = list.Count;
 
-            foreach (var obj in list)
+            Parallel.ForEach(list, obj =>
             {
                 DrawBoundingBox(input, obj.bounding_box, classColors[obj.name], obj.confidence);
-            }
+            });
+            
             return input;
         }
-        public void PostProcessYOLOV8(TensorFloat result)
-        {
-            LinkedList<float> confidences = new();
-            for (int i = 0; i < 8400; i++)
-            {
-                float max_conf = 0;
-                for (int j = 4; j < 84; j++)
-                {
-                    float conf = result[0, j, i];
-                    if(conf > max_conf)
-                        max_conf = conf;
-                }
-                confidences.AddLast(max_conf);
-            }
-
-            Debug.Log(confidences.Max());
-        }
-        private void DrawBoundingBox(TensorFloat imageCHW, Rect box, Color color, float confidence)
+        public static void DrawBoundingBox(TensorFloat imageCHW, Rect box, Color color, float confidence)
         {
             int channels = imageCHW.shape[1];
             int height = imageCHW.shape[2];
@@ -165,7 +161,7 @@ namespace kbradu
         }
 
         // Helper method to draw a single pixel
-        private void DrawPixel(TensorFloat imageCHW, int x, int y, float r, float g, float b)
+        private static void DrawPixel(TensorFloat imageCHW, int x, int y, float r, float g, float b)
         {
             int channels = imageCHW.shape[1];
             int height = imageCHW.shape[2];
@@ -173,9 +169,9 @@ namespace kbradu
 
             if (x >= 0 && x < width && y >= 0 && y < height)
             {
-                imageCHW[0, 0, y, x] = r; // Red channel
-                if (channels > 1) imageCHW[0, 1, y, x] = g; // Green channel
-                if (channels > 2) imageCHW[0, 2, y, x] = b; // Blue channel
+                imageCHW[0, 0, y, x] = r; 
+                if (channels > 1) imageCHW[0, 1, y, x] = g; 
+                if (channels > 2) imageCHW[0, 2, y, x] = b;
             }
         }
     

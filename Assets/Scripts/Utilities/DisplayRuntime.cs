@@ -8,6 +8,7 @@ namespace kbradu
 {
     public class DisplayRuntime : MonoBehaviour
     {
+        [Header("Add this script to an object with an UI Image component.")]
         private Image image;
 
 
@@ -20,10 +21,6 @@ namespace kbradu
         {
             Destroy(image.sprite);
             image.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-        }
-        public void SetTexture(TensorFloat tensor)
-        {
-            SetTexture(Utils.TensorToTexture(tensor));
         }
     }
 

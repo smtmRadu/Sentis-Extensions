@@ -1,34 +1,57 @@
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Unity.Sentis;
 using Unity.VisualScripting;
-using Unity.VisualScripting.FullSerializer;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using static UnityEngine.Rendering.ProbeAdjustmentVolume;
 
 namespace kbradu
 {
-    public enum Origin
+    public enum OriginLike
     {
         /// <summary>
-        /// Similar to PIL/CV2.
+        /// TOP-LEFT
         /// </summary>
-        TopLeft,
+        OpenCV,
         /// <summary>
-        /// Similar to Unity.
+        /// BOTTOM-LEFT
         /// </summary>
-        BottomLeft,
+        UnityTexture,
     }
     public static class Utils
     {
-        public static TensorFloat TextureToTensor(Texture2D texture, Origin xoyPosition, int channels = 3)
+        public static class Benckmark
+        {
+            static Stopwatch _clock;
+            public static void Start()
+            {
+                _clock = Stopwatch.StartNew();
+            }
+            public static TimeSpan Stop()
+            {
+                _clock.Stop();
+                UnityEngine.Debug.Log("[TIMER] : " + _clock.Elapsed);
+                return _clock.Elapsed;
+            }
+        }
+
+        /// <summary>
+        /// Output tensor shape (B, H, W, C)
+        /// </summary>
+        /// <param name="texture"></param>
+        /// <param name="read_like"></param>
+        /// <param name="channels"></param>
+        /// <returns></returns>
+        /// <exception cref="System.NotImplementedException"></exception>
+        public static TensorFloat TextureToTensorHWC(Texture2D texture, OriginLike read_like, int channels = 3, bool multithread = true)
         {
             if (texture == null)
             {
-                Debug.LogError("Texture is null. Cannot convert to tensor.");
+                UnityEngine.Debug.LogError("Texture is null. Cannot convert to tensor.");
                 return null;
             }
 
@@ -40,82 +63,358 @@ namespace kbradu
 
             Color[] pixels = texture.GetPixels();
 
-            for (int y = 0; y < height; y++)
+            if(multithread)
             {
-                for (int x = 0; x < width; x++)
+                Parallel.For(0, height, y =>
                 {
-                    int index = xoyPosition == Origin.TopLeft ? (height - 1 - y) * width + x : y * width + x;
-                    Color pixel = pixels[index];
+                    for (int x = 0; x < width; x++)
+                    {
+                        int index = read_like == OriginLike.OpenCV ? (height - 1 - y) * width + x : y * width + x;
+                        Color pixel = pixels[index];
 
-                    if (channels == 1)
-                        tensor[0, y, x, 0] = (pixel.r + pixel.b + pixel.g) / 3f;
-                    else if (channels == 3)
-                    {
-                        tensor[0, y, x, 0] = pixel.r;
-                        tensor[0, y, x, 1] = pixel.g;
-                        tensor[0, y, x, 2] = pixel.b;
+                        if (channels == 1)
+                            tensor[0, y, x, 0] = (pixel.r + pixel.b + pixel.g) / 3f;
+                        else if (channels == 3)
+                        {
+                            tensor[0, y, x, 0] = pixel.r;
+                            tensor[0, y, x, 1] = pixel.g;
+                            tensor[0, y, x, 2] = pixel.b;
+                        }
+                        else if (channels == 4)
+                        {
+                            tensor[0, y, x, 0] = pixel.r;
+                            tensor[0, y, x, 1] = pixel.g;
+                            tensor[0, y, x, 2] = pixel.b;
+                            tensor[0, y, x, 3] = pixel.a;
+                        }
+                        else
+                        {
+                            throw new System.NotImplementedException($"Unhandled number of channels ({channels})");
+                        }
                     }
-                    else if (channels == 4)
+                });
+            }
+            else
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
                     {
-                        tensor[0, y, x, 0] = pixel.r;
-                        tensor[0, y, x, 1] = pixel.g;
-                        tensor[0, y, x, 2] = pixel.b;
-                        tensor[0, y, x, 3] = pixel.a;
+                        int index = read_like == OriginLike.OpenCV ? (height - 1 - y) * width + x : y * width + x;
+                        Color pixel = pixels[index];
+
+                        if (channels == 1)
+                            tensor[0, y, x, 0] = (pixel.r + pixel.b + pixel.g) / 3f;
+                        else if (channels == 3)
+                        {
+                            tensor[0, y, x, 0] = pixel.r;
+                            tensor[0, y, x, 1] = pixel.g;
+                            tensor[0, y, x, 2] = pixel.b;
+                        }
+                        else if (channels == 4)
+                        {
+                            tensor[0, y, x, 0] = pixel.r;
+                            tensor[0, y, x, 1] = pixel.g;
+                            tensor[0, y, x, 2] = pixel.b;
+                            tensor[0, y, x, 3] = pixel.a;
+                        }
+                        else
+                        {
+                            throw new System.NotImplementedException($"Unhandled number of channels ({channels})");
+                        }
                     }
-                    else
+                }
+            }
+            
+
+            return tensor;
+        }
+        /// <summary>
+        /// Output tensor shape (B, C, H, W)
+        /// </summary>
+        /// <param name="texture"></param>
+        /// <param name="read_like"></param>
+        /// <param name="channels"></param>
+        /// <returns></returns>
+        /// <exception cref="System.NotImplementedException"></exception>
+        public static TensorFloat TextureToTensorCHW(Texture2D texture, OriginLike read_like, int channels = 3, bool multithread = true)
+        {
+            if (texture == null)
+            {
+                UnityEngine.Debug.LogError("Texture is null. Cannot convert to tensor.");
+                return null;
+            }
+
+            int width = texture.width;
+            int height = texture.height;
+
+            TensorShape shape = new TensorShape(1, channels, height, width);
+            TensorFloat tensor = TensorFloat.AllocZeros(shape);
+
+            Color[] pixels = texture.GetPixels();
+
+            if (multithread)
+            {
+                Parallel.For(0, height, y =>
+                {
+                    for (int x = 0; x < width; x++)
                     {
-                        throw new System.NotImplementedException($"Unhandled number of channels ({channels})");
+                        int index = read_like == OriginLike.OpenCV ? (height - 1 - y) * width + x : y * width + x;
+                        Color pixel = pixels[index];
+
+                        if (channels == 1)
+                            tensor[0, 0, y, x] = (pixel.r + pixel.b + pixel.g) / 3f;
+                        else if (channels == 3)
+                        {
+                            tensor[0, 0,y, x] = pixel.r;
+                            tensor[0, 1,y, x] = pixel.g;
+                            tensor[0, 2,y, x] = pixel.b;
+                        }
+                        else if (channels == 4)
+                        {
+                            tensor[0, 0, y, x] = pixel.r;
+                            tensor[0, 1, y, x] = pixel.g;
+                            tensor[0, 2, y, x] = pixel.b;
+                            tensor[0, 3, y, x] = pixel.a;
+                        }
+                        else
+                        {
+                            throw new System.NotImplementedException($"Unhandled number of channels ({channels})");
+                        }
+                    }
+                });
+            }
+            else
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int index = read_like == OriginLike.OpenCV ? (height - 1 - y) * width + x : y * width + x;
+                        Color pixel = pixels[index];
+
+                        if (channels == 1)
+                            tensor[0,0, y, x] = (pixel.r + pixel.b + pixel.g) / 3f;
+                        else if (channels == 3)
+                        {
+                            tensor[0, 0, y, x] = pixel.r;
+                            tensor[0, 1, y, x] = pixel.g;
+                            tensor[0, 2, y, x] = pixel.b;
+                        }
+                        else if (channels == 4)
+                        {
+                            tensor[0, 0, y, x] = pixel.r;
+                            tensor[0, 1, y, x] = pixel.g;
+                            tensor[0, 2, y, x] = pixel.b;
+                            tensor[0, 3, y, x] = pixel.a;
+                        }
+                        else
+                        {
+                            throw new System.NotImplementedException($"Unhandled number of channels ({channels})");
+                        }
                     }
                 }
             }
 
+
             return tensor;
         }
-        public static Texture2D TensorToTexture(TensorFloat tensor)
+        public static TensorFloat Random01Tensor(TensorShape shape)
         {
-            if (tensor == null)
+            float[] nums = new float[shape.ToArray().Aggregate(1, (x, y) => x * y)];
+            for (int i = 0; i < nums.Length; i++)
             {
-                Debug.LogError("Tensor is null. Cannot convert to texture.");
+                nums[i] = UnityEngine.Random.value;
+            }
+            return new TensorFloat(shape, nums);
+        }
+        /// <summary>
+        /// Tensor shape (1, H, W, C).
+        /// </summary>
+        /// <param name="tensorHWC"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException"></exception>
+        public static Texture2D TensorHWCToTexture(TensorFloat tensorHWC, bool multithread = true)
+        {
+            if (tensorHWC == null)
+            {
+                UnityEngine.Debug.LogError("Tensor is null. Cannot convert to texture.");
                 return null;
             }
-            if (tensor.shape[0] > 1)
-                throw new ArgumentException($"Allowed only 1 batch size, not {tensor.shape[0]}.");
-            int height = tensor.shape[1];
-            int width = tensor.shape[2];
-            int channels = tensor.shape[3];
+          
+            int[] shapeIn4D = TensorShapeTo4DShape(tensorHWC.shape);
+
+            if (shapeIn4D[0] > 1)
+                throw new ArgumentException($"Allowed only 1 batch size, not {shapeIn4D[0]}.");
+
+
+            int height = shapeIn4D[1];
+            int width = shapeIn4D[2];
+            int channels = shapeIn4D[3];
 
             Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
             Color[] pixels = new Color[width * height];
 
-            for (int y = 0; y < height; y++)
+            if(multithread)
             {
-                for (int x = 0; x < width; x++)
+                Parallel.For(0, height, y =>
                 {
-                    if (channels == 1)
+                    for (int x = 0; x < width; x++)
                     {
-                        float gray = tensor[0, y, x, 0];
-                        pixels[y * width + x] = new Color(gray, gray, gray, 1f);
+                        if (channels == 1)
+                        {
+                            float gray = tensorHWC[0, y, x, 0];
+                            pixels[y * width + x] = new Color(gray, gray, gray, 1f);
+                        }
+                        else if (channels == 3)
+                        {
+                            float r = tensorHWC[0, y, x, 0];
+                            float g = tensorHWC[0, y, x, 1];
+                            float b = tensorHWC[0, y, x, 2];
+                            pixels[y * width + x] = new Color(r, g, b, 1f);
+                        }
+                        else if (channels == 4)
+                        {
+                            float r = tensorHWC[0, y, x, 0];
+                            float g = tensorHWC[0, y, x, 1];
+                            float b = tensorHWC[0, y, x, 2];
+                            float a = tensorHWC[0, y, x, 3];
+                            pixels[y * width + x] = new Color(r, g, b, a);
+                        }
+                        else
+                            throw new ArgumentException($"Note that input must be of shape (B, H, W, C). Tensor shape received {tensorHWC.shape}");
                     }
-                    else if (channels == 3)
+                });
+            }
+            else
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
                     {
-                        float r = tensor[0, y, x, 0];
-                        float g = tensor[0, y, x, 1];
-                        float b = tensor[0, y, x, 2];
-                        pixels[y * width + x] = new Color(r, g, b, 1f);
+                        if (channels == 1)
+                        {
+                            float gray = tensorHWC[0, y, x, 0];
+                            pixels[y * width + x] = new Color(gray, gray, gray, 1f);
+                        }
+                        else if (channels == 3)
+                        {
+                            float r = tensorHWC[0, y, x, 0];
+                            float g = tensorHWC[0, y, x, 1];
+                            float b = tensorHWC[0, y, x, 2];
+                            pixels[y * width + x] = new Color(r, g, b, 1f);
+                        }
+                        else if (channels == 4)
+                        {
+                            float r = tensorHWC[0, y, x, 0];
+                            float g = tensorHWC[0, y, x, 1];
+                            float b = tensorHWC[0, y, x, 2];
+                            float a = tensorHWC[0, y, x, 3];
+                            pixels[y * width + x] = new Color(r, g, b, a);
+                        }
+                        else
+                            throw new ArgumentException($"Note that input must be of shape (B, H, W, C). Tensor shape received {tensorHWC.shape}");
                     }
-                    else if (channels == 4)
-                    {
-                        float r = tensor[0, y, x, 0];
-                        float g = tensor[0, y, x, 1];
-                        float b = tensor[0, y, x, 2];
-                        float a = tensor[0, y, x, 3];
-                        pixels[y * width + x] = new Color(r, g, b, a);
-                    }
-                    else
-                        throw new ArgumentException($"Note that input must be of shape (B, H, W, C). Tensor shape received {tensor.shape}");
                 }
             }
+            
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
+        }
+        /// <summary>
+        /// Tensor shape (1, C, H, W).
+        /// </summary>
+        /// <param name="tensorHWC"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException"></exception>
+        public static Texture2D TensorCHWToTexture(TensorFloat tensorCHW, bool multithread = true)
+        {
+            if (tensorCHW == null)
+            {
+                UnityEngine.Debug.LogError("Tensor is null. Cannot convert to texture.");
+                return null;
+            }
+
+            int[] shapeIn4D = TensorShapeTo4DShape(tensorCHW.shape);
+
+            if (shapeIn4D[0] > 1)
+                throw new ArgumentException($"Allowed only 1 batch size, not {shapeIn4D[0]}.");
+
+
+            int height = shapeIn4D[3];
+            int width = shapeIn4D[2];
+            int channels = shapeIn4D[1];
+
+            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+
+            Color[] pixels = new Color[width * height];
+
+            if (multithread)
+            {
+                Parallel.For(0, height, y =>
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        if (channels == 1)
+                        {
+                            float gray = tensorCHW[0, 0, y, x];
+                            pixels[y * width + x] = new Color(gray, gray, gray, 1f);
+                        }
+                        else if (channels == 3)
+                        {
+                            float r = tensorCHW[0, 0, y, x];
+                            float g = tensorCHW[0, 1, y, x];
+                            float b = tensorCHW[0, 2, y, x];
+                            pixels[y * width + x] = new Color(r, g, b, 1f);
+                        }
+                        else if (channels == 4)
+                        {
+                            float r = tensorCHW[0, 0, y, x];
+                            float g = tensorCHW[0, 1, y, x];
+                            float b = tensorCHW[0, 2, y, x];
+                            float a = tensorCHW[0, 3, y, x];
+                            pixels[y * width + x] = new Color(r, g, b, a);
+                        }
+                        else
+                            throw new ArgumentException($"Note that input must be of shape (B, H, W, C). Tensor shape received {tensorCHW.shape}");
+                    }
+                });
+            }
+            else
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        if (channels == 1)
+                        {
+                            float gray = tensorCHW[0, 0, y, x];
+                            pixels[y * width + x] = new Color(gray, gray, gray, 1f);
+                        }
+                        else if (channels == 3)
+                        {
+                            float r = tensorCHW[0, 0, y, x];
+                            float g = tensorCHW[0, 1, y, x];
+                            float b = tensorCHW[0, 2, y, x];
+                            pixels[y * width + x] = new Color(r, g, b, 1f);
+                        }
+                        else if (channels == 4)
+                        {
+                            float r = tensorCHW[0, 0, y, x];
+                            float g = tensorCHW[0, 1, y, x];
+                            float b = tensorCHW[0, 2, y, x];
+                            float a = tensorCHW[0, 3, y, x];
+                            pixels[y * width + x] = new Color(r, g, b, a);
+                        }
+                        else
+                            throw new ArgumentException($"Note that input must be of shape (B, C, H, W). Tensor shape received {tensorCHW.shape}");
+                    }
+                }
+            }
+
 
             texture.SetPixels(pixels);
             texture.Apply();
@@ -203,7 +502,24 @@ namespace kbradu
 
             return sb.ToString();
         }
-       
+        /// <summary>
+        /// Compares the shape and the elements.
+        /// </summary>
+        /// <param name="tensor1"></param>
+        /// <param name="tensor2"></param>
+        /// <returns></returns>
+        public static bool EqualTensors(TensorFloat tensor1, TensorFloat tensor2)
+        {
+            if (tensor1.shape != tensor2.shape)
+                return false;
+
+            if (tensor1.ToReadOnlyArray() != tensor2.ToReadOnlyArray())
+                return false;
+
+            return true;
+
+                
+        }
         public static TensorFloat CloneTensor(TensorFloat tensor)
         {
             TensorFloat outp = TensorFloat.AllocZeros(tensor.shape);
@@ -289,11 +605,11 @@ namespace kbradu
 
                 return string.Format("#{0:X2}{1:X2}{2:X2}", ri, gi, bi);
             }
-            public static void HWC2CHW(ref TensorFloat image)
+            public static void HWC2CHW(ref TensorFloat image, bool multithread = true)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform center crop.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform center crop.");
                     return;
                 }
                 int[] shape = TensorShapeTo4DShape(image.shape);
@@ -306,28 +622,50 @@ namespace kbradu
                 TensorShape newShape = new TensorShape(batch, channels, height, width);
                 TensorFloat permuted = TensorFloat.AllocZeros(newShape);
 
-                for (int b = 0; b < batch; b++)
+                if(multithread)
                 {
-                    for (int c = 0; c < channels; c++)
+                    TensorFloat refImage = image;
+
+                    Parallel.For(0, height, h =>
                     {
-                        for (int h = 0; h < height; h++)
+                        for (int b = 0; b < batch; b++)
                         {
-                            for (int w = 0; w < width; w++)
+                            for (int c = 0; c < channels; c++)
                             {
-                                permuted[b,c, h, w] = image[b, h, w, c];
+                                for (int w = 0; w < width; w++)
+                                {
+                                    permuted[b, c, h, w] = refImage[b, h, w, c];
+                                }
+                            }
+                        }
+                    });            
+                }
+                else
+                {
+                    for (int b = 0; b < batch; b++)
+                    {
+                        for (int c = 0; c < channels; c++)
+                        {
+                            for (int h = 0; h < height; h++)
+                            {
+                                for (int w = 0; w < width; w++)
+                                {
+                                    permuted[b, c, h, w] = image[b, h, w, c];
+                                }
                             }
                         }
                     }
                 }
+               
 
                 image.Dispose();
                 image = permuted;
             }
-            public static void CHW2HWC(ref TensorFloat image)
+            public static void CHW2HWC(ref TensorFloat image, bool multithread = true)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform center crop.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform center crop.");
                     return;
                 }
                 int[] shape = TensorShapeTo4DShape(image.shape);
@@ -341,28 +679,52 @@ namespace kbradu
                 TensorShape newShape = new TensorShape(batch, height, width, channels);
                 TensorFloat permuted = TensorFloat.AllocZeros(newShape);
 
-                for (int b = 0; b < batch; b++)
+                if(multithread)
                 {
-                    for (int c = 0; c < channels; c++)
+                    TensorFloat refImage = image;
+                    Parallel.For(0, height, h =>
                     {
-                        for (int h = 0; h < height; h++)
+                        for (int b = 0; b < batch; b++)
                         {
-                            for (int w = 0; w < width; w++)
+                            for (int c = 0; c < channels; c++)
                             {
-                                permuted[b, h, w, c] = image[b, c, h, w];
+                                for (int w = 0; w < width; w++)
+                                {
+                                    permuted[b, h, w, c] = refImage[b, c, h, w];
+                                }
+                            }
+                        }
+                    });
+                }else
+                {
+                    for (int b = 0; b < batch; b++)
+                    {
+                        for (int c = 0; c < channels; c++)
+                        {
+                            for (int h = 0; h < height; h++)
+                            {
+                                for (int w = 0; w < width; w++)
+                                {
+                                    permuted[b, h, w, c] = image[b, c, h, w];
+                                }
                             }
                         }
                     }
                 }
+                
 
                 image.Dispose();
                 image = permuted;
             }
-            public static void CenterCrop(ref TensorFloat image)
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
+            public static void CenterCrop(ref TensorFloat image, bool multithread = true)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform center crop.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform center crop.");
                     return;
                 }
                 int[] shape = TensorShapeTo4DShape(image.shape);
@@ -383,34 +745,63 @@ namespace kbradu
                 TensorShape newShape = new TensorShape(batch, squareSize, squareSize, channels);
                 TensorFloat croppedTensor = TensorFloat.AllocZeros(newShape);
 
-                for (int b = 0; b < batch; b++)
+                if(multithread)
                 {
-                    for (int y = 0; y < squareSize; y++)
-                    {
-                        for (int x = 0; x < squareSize; x++)
+                    TensorFloat imageRef = image;
+                   
+                        Parallel.For(0, squareSize, y =>
                         {
-                            for (int c = 0; c < channels; c++)
+                            for (int b = 0; b < batch; b++)
                             {
-                                croppedTensor[b, y, x, c] = image[b, y + yOffset, x + xOffset, c];
+                                for (int x = 0; x < squareSize; x++)
+                                {
+                                    for (int c = 0; c < channels; c++)
+                                    {
+                                        croppedTensor[b, y, x, c] = imageRef[b, y + yOffset, x + xOffset, c];
+                                    }
+                                }
+                            }
+                        });
+                   
+                }
+                else
+                {
+                    for (int b = 0; b < batch; b++)
+                    {
+                        for (int y = 0; y < squareSize; y++)
+                        {
+                            for (int x = 0; x < squareSize; x++)
+                            {
+                                for (int c = 0; c < channels; c++)
+                                {
+                                    croppedTensor[b, y, x, c] = image[b, y + yOffset, x + xOffset, c];
+                                }
                             }
                         }
                     }
                 }
-
+     
                 image.Dispose();
                 image = croppedTensor;
             }
+
+
+            /// <summary>
+            /// Image shape (B, H, W, C).
+            /// If average = true, the avg of all 3 channels is taken (r+g+b)/3, other wise is weighted like: 0.299f * r + 0.587f * g + 0.114f * b;.
+            /// </summary>
+            /// <param name="image"></param>
             public static void ToGrayscale(ref TensorFloat image, bool average = false)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot convert to grayscale.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot convert to grayscale.");
                     return;
                 }
 
                 if (image.shape[3] < 3)
                 {
-                    Debug.LogError("Tensor does not have 3 or 4 channels (RGB/RGBA). Cannot convert to grayscale.");
+                    UnityEngine.Debug.LogError("Tensor does not have 3 or 4 channels (RGB/RGBA). Cannot convert to grayscale.");
                     return;
                 }
 
@@ -443,6 +834,10 @@ namespace kbradu
                 image.Dispose();
                 image = grayscaleTensor;
             }
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
             public static void FlipHorizontally(ref TensorFloat image)
             {
                 int[] shape = TensorShapeTo4DShape(image.shape);
@@ -472,6 +867,10 @@ namespace kbradu
                 image.Dispose();
                 image = flippedTensor;
             }
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
             public static void FlipVertically(ref TensorFloat image)
             {
                 int[] shape = TensorShapeTo4DShape(image.shape);
@@ -501,6 +900,10 @@ namespace kbradu
                 image.Dispose();
                 image = flippedTensor;
             }
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
             public static void Rescale(ref TensorFloat image, float scale)
             {
                 int width = (int)MathF.Floor(image.shape[2] * scale);
@@ -549,11 +952,15 @@ namespace kbradu
                 image.Dispose();
                 image = scaled;
             }
-            public static void Resize(ref TensorFloat image, int newWidth, int newHeight)
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
+            public static void Resize(ref TensorFloat image, int newWidth, int newHeight, bool multithread = true)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform resize.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform resize.");
                     return;
                 }
 
@@ -582,64 +989,128 @@ namespace kbradu
                 float scaleX = (float)(oldWidth - 1) / (scaledWidth - 1);
                 float scaleY = (float)(oldHeight - 1) / (scaledHeight - 1);
 
-                for (int b = 0; b < batch; b++)
+                if(multithread)
                 {
-                    for (int y = 0; y < scaledHeight; y++)
-                    {
-                        for (int x = 0; x < scaledWidth; x++)
+                    TensorFloat refImage = image;
+                   
+                        Parallel.For(0, scaledHeight, y =>
                         {
-                            float srcX = x * scaleX;
-                            float srcY = y * scaleY;
-
-                            int x1 = (int)MathF.Floor(srcX);
-                            int y1 = (int)MathF.Floor(srcY);
-                            int x2 = Mathf.Min(x1 + 1, oldWidth - 1);
-                            int y2 = Mathf.Min(y1 + 1, oldHeight - 1);
-
-                            float dx = srcX - x1;
-                            float dy = srcY - y1;
-
-                            for (int c = 0; c < channels; c++)
+                        for (int b = 0; b < batch; b++)
+                        {
+                            for (int x = 0; x < scaledWidth; x++)
                             {
-                                float q11 = image[b, y1, x1, c];
-                                float q21 = image[b, y1, x2, c];
-                                float q12 = image[b, y2, x1, c];
-                                float q22 = image[b, y2, x2, c];
+                                float srcX = x * scaleX;
+                                float srcY = y * scaleY;
 
-                                float pix = (1 - dx) * (1 - dy) * q11 +
-                                            dx * (1 - dy) * q21 +
-                                            (1 - dx) * dy * q12 +
-                                            dx * dy * q22;
+                                int x1 = (int)MathF.Floor(srcX);
+                                int y1 = (int)MathF.Floor(srcY);
+                                int x2 = Mathf.Min(x1 + 1, oldWidth - 1);
+                                int y2 = Mathf.Min(y1 + 1, oldHeight - 1);
 
-                                resized[b, y + padY, x + padX, c] = pix;
+                                float dx = srcX - x1;
+                                float dy = srcY - y1;
+
+                                for (int c = 0; c < channels; c++)
+                                {
+                                    float q11 = refImage[b, y1, x1, c];
+                                    float q21 = refImage[b, y1, x2, c];
+                                    float q12 = refImage[b, y2, x1, c];
+                                    float q22 = refImage[b, y2, x2, c];
+
+                                    float pix = (1f - dx) * (1f - dy) * q11 +
+                                                dx * (1f - dy) * q21 +
+                                                (1f - dx) * dy * q12 +
+                                                dx * dy * q22;
+
+                                    resized[b, y + padY, x + padX, c] = pix;
+                                }
+                            }
+                            }
+                        });
+                    
+
+                }
+                else
+                {
+                    for (int b = 0; b < batch; b++)
+                    {
+                        for (int y = 0; y < scaledHeight; y++)
+                        {
+                            for (int x = 0; x < scaledWidth; x++)
+                            {
+                                float srcX = x * scaleX;
+                                float srcY = y * scaleY;
+
+                                int x1 = (int)MathF.Floor(srcX);
+                                int y1 = (int)MathF.Floor(srcY);
+                                int x2 = Mathf.Min(x1 + 1, oldWidth - 1);
+                                int y2 = Mathf.Min(y1 + 1, oldHeight - 1);
+
+                                float dx = srcX - x1;
+                                float dy = srcY - y1;
+
+                                for (int c = 0; c < channels; c++)
+                                {
+                                    float q11 = image[b, y1, x1, c];
+                                    float q21 = image[b, y1, x2, c];
+                                    float q12 = image[b, y2, x1, c];
+                                    float q22 = image[b, y2, x2, c];
+
+                                    float pix = (1 - dx) * (1 - dy) * q11 +
+                                                dx * (1 - dy) * q21 +
+                                                (1 - dx) * dy * q12 +
+                                                dx * dy * q22;
+
+                                    resized[b, y + padY, x + padX, c] = pix;
+                                }
                             }
                         }
                     }
+
                 }
 
                 image.Dispose();
                 image = resized;
             }
-            public static void AffineTransform(TensorFloat tensor, float weight = 1, float bias = 0)
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
+            public static void AffineTransform(TensorFloat tensor, float weight = 1, float bias = 0, bool multithread = true)
             {
                 if (tensor == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform affine transform.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform affine transform.");
                     return;
                 }
                 int totalElements = tensor.count;
 
-                for (int i = 0; i < totalElements; i++)
+                if(multithread)
                 {
-                    tensor[i] = tensor[i] * weight + bias;
+                    Parallel.For(0, totalElements, i =>
+                    {
+                        tensor[i] = tensor[i] * weight + bias;
+                    });
+                }
+                else
+                {
+                    for (int i = 0; i < totalElements; i++)
+                    {
+                        tensor[i] = tensor[i] * weight + bias;
+                    }
                 }
                 
+                
             }
+            /// <summary>
+            /// Image shape (B, H, W, C)
+            /// </summary>
+            /// <param name="image"></param>
             public static void Rotate(ref TensorFloat image, float angleDegrees)
             {
                 if (image == null)
                 {
-                    Debug.LogError("Tensor is null. Cannot perform rotation.");
+                    UnityEngine.Debug.LogError("Tensor is null. Cannot perform rotation.");
                     return;
                 }
                 int batch = image.shape[0];

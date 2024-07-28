@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Unity.Sentis;
 using UnityEditor;
 using UnityEngine;
@@ -13,7 +12,7 @@ namespace kbradu
     }
     public class ONNXRuntime : MonoBehaviour
     {
-        [Header("This initializes 1 auto-disposable worker.")]
+        [Header("This script runs one auto-disposable worker.")]
         public ModelAsset model;
         public Device device = Device.CPU;
 
@@ -39,6 +38,7 @@ namespace kbradu
             worker.Execute(input);
 
             Tensor output = worker.PeekOutput();
+
             if (device == Device.GPU)
             {
                 input.CompleteOperationsAndDownload();

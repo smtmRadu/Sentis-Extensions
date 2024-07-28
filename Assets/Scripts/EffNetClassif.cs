@@ -40,18 +40,18 @@ namespace kbradu
         {
             if (Time.frameCount % inferenceFreq != 0)
             {
-                TensorFloat f = Utils.TextureToTensor(webcamRuntime.GetCamTexture(true), Origin.TopLeft);
-                display.SetTexture(f);
+                TensorFloat f = Utils.TextureToTensorHWC(webcamRuntime.GetCamTexture(true), OriginLike.OpenCV, multithread:true);
+                display.SetTexture(Utils.TensorHWCToTexture(f, true));
                 return;
             }
 
             var view = webcamRuntime.GetCamTexture(true);
           
-            TensorFloat input = Utils.TextureToTensor(view, Origin.TopLeft);
-            display.SetTexture(input);
-            Utils.Vision.Resize(ref input, 224, 224);
+            TensorFloat input = Utils.TextureToTensorHWC(view, OriginLike.OpenCV, multithread:true);
+            display.SetTexture(Utils.TensorHWCToTexture(input, true));
+            Utils.Vision.Resize(ref input, 224, 224, true);
             //display.SetTexture(input);
-            Utils.Vision.AffineTransform(input, 2, -1);
+            Utils.Vision.AffineTransform(input, 2, -1, true);
            
             TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
             float[] probs = output.ToReadOnlyArray();
