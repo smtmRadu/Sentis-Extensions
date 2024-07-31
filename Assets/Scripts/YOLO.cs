@@ -61,11 +61,11 @@ namespace kbradu
     
             Utils.Benckmark.Start();
             Texture2D view = testImage.texture;
-            TensorFloat input = Utils.TextureToTensorHWC(view, OriginLike.OpenCV, multithread:true);
+            TensorFloat input = TensorFloatExtensions.FromTexture(view, ImageShape.HWC, OriginLike.OpenCV);
 
-            Utils.Vision.CenterCrop(ref input, true);
-            Utils.Vision.Resize(ref input, 640, 640, true);
-            Utils.Vision.HWC2CHW(ref input, true);
+            input = input.CenterCrop();
+            input = input.Resize(640, 640);
+            input = input.HWC2CHW();
 
            
 
@@ -75,7 +75,7 @@ namespace kbradu
             var result = PostProcess_yolov10n(input, output); // to be optimized
            
             // this takes 0.06
-            cameraDisplay.SetTexture(Utils.TensorCHWToTexture(result, true));
+            cameraDisplay.SetTexture(result.ToTexture(ImageShape.CHW));
 
             input.Dispose();
             output.Dispose();
@@ -106,7 +106,7 @@ namespace kbradu
             foreach (DetectedObject obj in list)
             {
                 Color col = classColors[obj.name];
-                stringBuilder.Append($"<color={Utils.Vision.HexOf(col.r, col.g, col.b)}>");
+                stringBuilder.Append($"<color={Utils.HexOf(col.r, col.g, col.b)}>");
                 stringBuilder.Append(obj.name);
                 stringBuilder.Append(" - ");
                 stringBuilder.Append($"{(int)(obj.confidence * 100f)}%");

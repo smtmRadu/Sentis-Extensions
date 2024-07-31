@@ -540,7 +540,6 @@ MonoBehaviour:
   webcamRuntime: {fileID: 1062689150}
   text: {fileID: 465328368}
   labelsFile: {fileID: 4900000, guid: 382d859c674486c469b407ab827b3631, type: 3}
-  inferenceFreq: 10
 --- !u!4 &546350570
 Transform:
   m_ObjectHideFlags: 0
@@ -677,7 +676,7 @@ Canvas:
   m_OverrideSorting: 0
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
-  m_VertexColorAlwaysGammaSpace: 0
+  m_VertexColorAlwaysGammaSpace: 1
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -730,13 +729,13 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1600469695}
-  m_LocalRotation: {x: 0, y: 0, z: 1, w: 0}
+  m_LocalRotation: {x: 0, y: 1, z: 0, w: 0}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 9.3239, y: 9.3239, z: 9.3239}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1401201702}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 180}
+  m_LocalEulerAnglesHint: {x: 0, y: 180, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 311, y: 0}

@@ -50,13 +50,13 @@ public class VRYOLO : MonoBehaviour
     {
         Texture2D input_view = vrCamera.GetCamTexture(false/*,~(1<<3)*/);
 
-        TensorFloat input = Utils.TextureToTensorCHW(input_view, OriginLike.OpenCV, multithread: true);
+        TensorFloat input = TensorFloatExtensions.FromTexture(input_view,ImageShape.CHW, OriginLike.OpenCV, multithread: true);
 
         TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
 
         PostProcess_yolov10n(input, output); // to be optimized
-        displayRuntime.SetTexture(Utils.TensorCHWToTexture(input));
-
+        displayRuntime.SetTexture(TensorFloatExtensions.ToTexture(input, ImageShape.CHW));
+        // displayRuntime.SetTexturePixelsFromTensor(input, ImageShape.CHW);
         input.Dispose();
         output.Dispose();
         Destroy(input_view);
@@ -85,7 +85,7 @@ public class VRYOLO : MonoBehaviour
         foreach (DetectedObject obj in list)
         {
             Color col = classColors[obj.name];
-            stringBuilder.Append($"<color={Utils.Vision.HexOf(col.r, col.g, col.b)}>");
+            stringBuilder.Append($"<color={Utils.HexOf(col.r, col.g, col.b)}>");
             stringBuilder.Append(obj.name);
             stringBuilder.Append(" - ");
             stringBuilder.Append($"{(int)(obj.confidence * 100f)}%");

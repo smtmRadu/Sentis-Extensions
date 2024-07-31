@@ -14,7 +14,6 @@ namespace kbradu
         public WebcamRuntime webcamRuntime;
         public TMP_Text text;
         public TextAsset labelsFile;
-        public int inferenceFreq = 5;
 
         private Dictionary<int, string> labelsMap = new();
 
@@ -38,30 +37,22 @@ namespace kbradu
 
         private void Update()
         {
-            if (Time.frameCount % inferenceFreq != 0)
-            {
-                TensorFloat f = Utils.TextureToTensorHWC(webcamRuntime.GetCamTexture(true), OriginLike.OpenCV, multithread:true);
-                display.SetTexture(Utils.TensorHWCToTexture(f, true));
-                return;
-            }
+            var cam_view = webcamRuntime.GetCamTexture(true);
 
-            var view = webcamRuntime.GetCamTexture(true);
-          
-            TensorFloat input = Utils.TextureToTensorHWC(view, OriginLike.OpenCV, multithread:true);
-            display.SetTexture(Utils.TensorHWCToTexture(input, true));
-            Utils.Vision.Resize(ref input, 224, 224, true);
-            //display.SetTexture(input);
-            Utils.Vision.AffineTransform(input, 2, -1, true);
-           
+            TensorFloat input = TensorFloatExtensions.FromTexture(cam_view, ImageShape.HWC, OriginLike.OpenCV);
+            input = input.Resize(224, 224);
+            input.AffineTransform_(2, -1);
+
             TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
             float[] probs = output.ToReadOnlyArray();
             int index =  Utils.Math.ArgMax(probs);
             text.color = Color.Lerp(Color.red, Color.green, probs[index]);
-            text.text = $"{labelsMap[index]} ({(int)(probs[index]*100)}%)"; ;
+            text.text = $"{labelsMap[index]} ({(int)(probs[index]*100)}%)";
 
-            Destroy(view);
             input.Dispose();
             output.Dispose();
+
+            display.SetTexture(cam_view);
         }
     }
 }
