@@ -9,7 +9,7 @@ namespace kbradu
 {
     public class EffNetClassif : MonoBehaviour
     {
-        public ONNXRuntime modelRuntime;
+        public ModelRuntime modelRuntime;
         public DisplayRuntime display;
         public WebcamRuntime webcamRuntime;
         public TMP_Text text;
@@ -41,7 +41,7 @@ namespace kbradu
 
             TensorFloat input = TensorFloatExtensions.FromTexture(cam_view, ImageShape.HWC, OriginLike.OpenCV);
             input = input.Resize(224, 224);
-            input.AffineTransform_(2, -1);
+            input = input.AffineTransform(2, -1);
 
             TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
             float[] probs = output.ToReadOnlyArray();

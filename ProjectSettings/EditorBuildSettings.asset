@@ -5,9 +5,12 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/effnet.unity
     guid: 99c9720ab356a0642a771bea13969a05
+  - enabled: 1
+    path: Assets/Scenes/vryolo.unity
+    guid: 98c4faf0d308af44494135ce817f6f2f
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 0aade233418f3e14f9295924b48560b8, type: 2}
     UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: a4780d885e98a2441be633497518624e, type: 2}

@@ -1,5 +1,6 @@
 using kbradu;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,7 +11,7 @@ using static kbradu.YOLOScript;
 
 public class VRYOLO : MonoBehaviour
 {
-    [SerializeField] private ONNXRuntime modelRuntime;
+    [SerializeField] private ModelRuntime modelRuntime;
     [SerializeField] private CameraRuntime vrCamera;
     [SerializeField] private DisplayRuntime displayRuntime;
     [SerializeField] private TMP_Text text;
@@ -48,27 +49,64 @@ public class VRYOLO : MonoBehaviour
 
     public void Detect()
     {
-        Texture2D input_view = vrCamera.GetCamTexture(false/*,~(1<<3)*/);
+        Texture2D input_view = vrCamera.GetCamTexture(false,~(1<<3));
 
-        TensorFloat input = TensorFloatExtensions.FromTexture(input_view,ImageShape.CHW, OriginLike.OpenCV, multithread: true);
+        Color init_cam_color = vrCamera.cam.backgroundColor;
+        vrCamera.cam.backgroundColor = Color.black;
+        Texture2D controllers_view = vrCamera.GetCamTexture(false, 1<<3);
+        vrCamera.cam.backgroundColor = init_cam_color;
 
+        TensorFloat input = TensorFloatExtensions.FromTexture(input_view, ImageShape.CHW, OriginLike.OpenCV, multithread: true);
         TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
 
-        PostProcess_yolov10n(input, output); // to be optimized
-        displayRuntime.SetTexture(TensorFloatExtensions.ToTexture(input, ImageShape.CHW));
-        // displayRuntime.SetTexturePixelsFromTensor(input, ImageShape.CHW);
+        PostProcess_yolov10(input, output, Time.deltaTime); // to be optimized
+        Texture2D display_view = TensorFloatExtensions.ToTexture(input, ImageShape.CHW);
+        PasteControllerOnView(display_view, controllers_view);
+        displayRuntime.SetTexture(display_view);
+
         input.Dispose();
         output.Dispose();
         Destroy(input_view);
+        Destroy(controllers_view);
     }
-    public void PostProcess_yolov10n(TensorFloat input, TensorFloat yolo_output)
+    public void PasteControllerOnView(Texture2D view, Texture2D controllers)
+    {
+        int width = view.width;
+        int height = view.height;
+
+        Color[] viewPixels = view.GetPixels();
+        Color[] controllersPixels = controllers.GetPixels();
+        Color[] finalPixels = new Color[viewPixels.Length];
+        Parallel.For(0, height, y =>
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int viewIndex = x + y * width;
+                int flippedY = height - 1 - y;
+                int controllersIndex = x + flippedY * width;
+
+                if (controllersPixels[controllersIndex] == Color.black)
+                {
+                    finalPixels[viewIndex] = viewPixels[viewIndex];
+                }
+                else
+                {
+                    finalPixels[viewIndex] = controllersPixels[controllersIndex];
+                }
+            }
+        });
+
+        view.SetPixels(finalPixels);
+        view.Apply();
+    }
+
+
+    public async void PostProcess_yolov10(TensorFloat input, TensorFloat yolo_output, float deltatime)
     {
         // input 3, 640, 640
-        // 1,300, 6
-
-        LinkedList<DetectedObject> list = new();
-
-        for (int i = 0; i < 300; i++)
+        // 1,300, 6 
+        ConcurrentBag<DetectedObject> list = new();
+        Parallel.For(0, 300, i =>
         {
             float x = yolo_output[0, i, 0];
             float y = yolo_output[0, i, 1];
@@ -78,26 +116,31 @@ public class VRYOLO : MonoBehaviour
             string classname = classLabels[(int)yolo_output[0, i, 5]];
 
             if (confidence > confidence_tresh)
-                list.AddLast(new DetectedObject(new Rect(x, y, w, h), confidence, classname));
-        }
+                list.Add(new DetectedObject(new Rect(x, y, w, h), confidence, classname));
+        });
 
-        StringBuilder stringBuilder = new StringBuilder($"FPS: {(int)(1f / Time.deltaTime)}\nDetections: {list.Count}\n\n");
-        foreach (DetectedObject obj in list)
+
+        Task<string> to_display_string = Task.Run(() =>
         {
-            Color col = classColors[obj.name];
-            stringBuilder.Append($"<color={Utils.HexOf(col.r, col.g, col.b)}>");
-            stringBuilder.Append(obj.name);
-            stringBuilder.Append(" - ");
-            stringBuilder.Append($"{(int)(obj.confidence * 100f)}%");
-            stringBuilder.Append("</color>\n");
-
-
-        }
-        text.text = stringBuilder.ToString();
+            StringBuilder stringBuilder = new StringBuilder($"FPS: {(int)(1f / deltatime)}\nDetections: {list.Count}\n\n");
+            foreach (DetectedObject obj in list)
+            {
+                Color col = classColors[obj.name];
+                stringBuilder.Append($"<color={Utils.HexOf(col.r, col.g, col.b)}>");
+                stringBuilder.Append(obj.name);
+                stringBuilder.Append(" - ");
+                stringBuilder.Append($"{(int)(obj.confidence * 100f)}%");
+                stringBuilder.Append("</color>\n");
+            }
+            return stringBuilder.ToString();
+        });
+       
 
         Parallel.ForEach(list, obj =>
         {
             DrawBoundingBox(input, obj.bounding_box, classColors[obj.name], obj.confidence);
         });
+
+        text.text = await to_display_string;
     }
 }

@@ -6,7 +6,8 @@ namespace kbradu
 {
     public class CameraRuntime : MonoBehaviour
     {
-        private Camera cam;
+        [Header("This script must be attached to a Camera gameObject.")]
+        [HideInInspector] public Camera cam;
         private RenderTexture renderTexture;
 
         private void Awake()

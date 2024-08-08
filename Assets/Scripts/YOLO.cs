@@ -10,7 +10,7 @@ namespace kbradu
 {
     public class YOLOScript : MonoBehaviour
     {
-        [SerializeField] private ONNXRuntime modelRuntime;
+        [SerializeField] private ModelRuntime modelRuntime;
         [SerializeField] private CameraRuntime cam;
         [SerializeField] private DisplayRuntime cameraDisplay;
         [SerializeField] private TMP_Text text;
@@ -124,7 +124,7 @@ namespace kbradu
             
             return input;
         }
-        public static void DrawBoundingBox(TensorFloat imageCHW, Rect box, Color color, float confidence)
+        public static void DrawBoundingBox(TensorFloat imageCHW, Rect box, Color color, float confidence, float line_thickness = 5f)
         {
             int channels = imageCHW.shape[1];
             int height = imageCHW.shape[2];
@@ -139,7 +139,7 @@ namespace kbradu
             float g = color.g;
             float b = color.b;
 
-            int lineThickness = (int)(confidence * 10f); 
+            int lineThickness = (int)(confidence * line_thickness); 
 
             for (int i = x; i <= x2; i++)
             {
