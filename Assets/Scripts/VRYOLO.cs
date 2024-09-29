@@ -8,6 +8,7 @@ using TMPro;
 using Unity.Sentis;
 using UnityEngine;
 using static kbradu.YOLOScript;
+using SentisExtensions;
 
 public class VRYOLO : MonoBehaviour
 {
@@ -44,23 +45,59 @@ public class VRYOLO : MonoBehaviour
 
     public void Update()
     {
-        Detect();
+        // Detect();
+
+        TestView();
     }
 
+    RenderTexture display_view;
+    public void TestView()
+    {
+        Destroy(display_view);
+        RenderTexture input_view = vrCamera.GetCamRenderTexture(~(1 << 3));
+
+        // Color init_cam_color = vrCamera.cam.backgroundColor;
+        // vrCamera.cam.backgroundColor = Color.black;
+        // RenderTexture controllers_view = vrCamera.GetCamRenderTexture(1 << 3);
+        // vrCamera.cam.backgroundColor = init_cam_color;
+
+        Tensor<float> input = TextureConverter.ToTensor(input_view, new TextureTransform().SetDimensions(640, 640, 3).SetCoordOrigin(CoordOrigin.BottomLeft));      
+        Tensor<float> output = modelRuntime.Forward(input) as Tensor<float>;
+
+
+        Tensor<float> input_clone = input.ReadbackAndClone();
+        Tensor<float> output_clone = output.ReadbackAndClone();
+        
+        input.Dispose();
+        output.Dispose();
+
+        PostProcess_yolov10(input_clone, output_clone, Time.deltaTime); // to be optimized
+        display_view = TextureConverter.ToTexture(input_clone);
+        // PasteControllerOnView(display_view, controllers_view);
+        displayRuntime.SetTexture(display_view);
+
+
+        input.Dispose();
+        output.Dispose();
+        // Destroy(controllers_view);
+    }
     public void Detect()
     {
-        Texture2D input_view = vrCamera.GetCamTexture(false,~(1<<3));
+        Texture2D input_view = vrCamera.GetCamTexture2D(false,~(1<<3));
 
         Color init_cam_color = vrCamera.cam.backgroundColor;
         vrCamera.cam.backgroundColor = Color.black;
-        Texture2D controllers_view = vrCamera.GetCamTexture(false, 1<<3);
+        Texture2D controllers_view = vrCamera.GetCamTexture2D(false, 1<<3);
         vrCamera.cam.backgroundColor = init_cam_color;
 
-        TensorFloat input = TensorFloatExtensions.FromTexture(input_view, ImageShape.CHW, OriginLike.OpenCV, multithread: true);
-        TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
+        Tensor<float> input = TensorExtensions.FromTexture(input_view, ImageShape.CHW, OriginCoord.OpenCV, multithread: true);
+        Tensor<float> output = modelRuntime.Forward(input) as Tensor<float>;
+
+        input.ReadbackRequest();
+        output.ReadbackRequest();
 
         PostProcess_yolov10(input, output, Time.deltaTime); // to be optimized
-        Texture2D display_view = TensorFloatExtensions.ToTexture(input, ImageShape.CHW);
+        Texture2D display_view = TensorExtensions.ToTexture(input, ImageShape.CHW);
         PasteControllerOnView(display_view, controllers_view);
         displayRuntime.SetTexture(display_view);
 
@@ -101,11 +138,12 @@ public class VRYOLO : MonoBehaviour
     }
 
 
-    public async void PostProcess_yolov10(TensorFloat input, TensorFloat yolo_output, float deltatime)
+    public async void PostProcess_yolov10(Tensor<float> input, Tensor<float> yolo_output, float deltatime)
     {
         // input 3, 640, 640
         // 1,300, 6 
         ConcurrentBag<DetectedObject> list = new();
+
         Parallel.For(0, 300, i =>
         {
             float x = yolo_output[0, i, 0];

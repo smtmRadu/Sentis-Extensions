@@ -1,15 +1,15 @@
 using kbradu;
-using System.Linq;
+using SentisExtensions;
 using Unity.Sentis;
 using UnityEngine;
 
 public class TestUtils : MonoBehaviour
 {
+    public Texture2D tex;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        TensorFloat tens = TensorFloatExtensions.Random01(100, 100);
-
+        Application.targetFrameRate = 1000;
     }
 
 

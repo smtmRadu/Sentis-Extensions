@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using TMPro;
 using Unity.Sentis;
 using UnityEngine;
-
+using SentisExtensions;
 namespace kbradu
 {
     public class YOLOScript : MonoBehaviour
@@ -61,15 +61,15 @@ namespace kbradu
     
             Utils.Benckmark.Start();
             Texture2D view = testImage.texture;
-            TensorFloat input = TensorFloatExtensions.FromTexture(view, ImageShape.HWC, OriginLike.OpenCV);
+            Tensor<float> input = TensorExtensions.FromTexture(view, ImageShape.HWC, OriginCoord.OpenCV);
 
-            input = input.CenterCrop();
-            input = input.Resize(640, 640);
+            input = input.CenterCropBHWC();
+            input = input.ResizeBHWC(640, 640);
             input = input.HWC2CHW();
 
-           
 
-            TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
+
+            Tensor<float> output = modelRuntime.Forward(input) as Tensor<float>;
        
 
             var result = PostProcess_yolov10n(input, output); // to be optimized
@@ -82,7 +82,7 @@ namespace kbradu
             result.Dispose();
             Utils.Benckmark.Stop();
         }
-        public TensorFloat PostProcess_yolov10n(TensorFloat input, TensorFloat result)
+        public Tensor<float> PostProcess_yolov10n(Tensor<float> input, Tensor<float> result)
         {
             // input 3, 640, 640
             // 1,300, 6
@@ -124,7 +124,7 @@ namespace kbradu
             
             return input;
         }
-        public static void DrawBoundingBox(TensorFloat imageCHW, Rect box, Color color, float confidence, float line_thickness = 5f)
+        public static void DrawBoundingBox(Tensor<float> imageCHW, Rect box, Color color, float confidence, float line_thickness = 5f)
         {
             int channels = imageCHW.shape[1];
             int height = imageCHW.shape[2];
@@ -161,7 +161,7 @@ namespace kbradu
         }
 
         // Helper method to draw a single pixel
-        private static void DrawPixel(TensorFloat imageCHW, int x, int y, float r, float g, float b)
+        private static void DrawPixel(Tensor<float> imageCHW, int x, int y, float r, float g, float b)
         {
             int channels = imageCHW.shape[1];
             int height = imageCHW.shape[2];

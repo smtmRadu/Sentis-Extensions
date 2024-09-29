@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using TMPro;
 using Unity.Sentis;
 using UnityEngine;
-
+using SentisExtensions;
+using UnityEngine.Assertions;
 
 namespace kbradu
 {
@@ -33,18 +34,22 @@ namespace kbradu
                     labelsMap.Add(key, value);
                 }
             }
+
+     
         }
 
         private void Update()
         {
             var cam_view = webcamRuntime.GetCamTexture(true);
 
-            TensorFloat input = TensorFloatExtensions.FromTexture(cam_view, ImageShape.HWC, OriginLike.OpenCV);
-            input = input.Resize(224, 224);
+            Tensor<float> input = TensorExtensions.FromTexture(cam_view, ImageShape.HWC, OriginCoord.OpenCV);
+
+            input = input.ResizeBHWC(224, 224);
             input = input.AffineTransform(2, -1);
 
-            TensorFloat output = modelRuntime.Forward(input) as TensorFloat;
-            float[] probs = output.ToReadOnlyArray();
+            Tensor<float> output = modelRuntime.Forward(input) as Tensor<float>;
+            float[] probs = output.DownloadToArray();
+           
             int index =  Utils.Math.ArgMax(probs);
             text.color = Color.Lerp(Color.red, Color.green, probs[index]);
             text.text = $"{labelsMap[index]} ({(int)(probs[index]*100)}%)";
@@ -53,6 +58,9 @@ namespace kbradu
             output.Dispose();
 
             display.SetTexture(cam_view);
+
+            
+          
         }
     }
 }
